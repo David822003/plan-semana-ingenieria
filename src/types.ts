@@ -17,6 +17,8 @@ export interface Activity {
   gastos: number;
   resultado: string;
   numero_estudiantes?: number;
+  fichero_url?: string;
+  historial_cambios?: string;
 }
 
 export type DayName = "Lunes" | "Martes" | "Miércoles" | "Jueves" | "Viernes";

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, ChangeEvent } from "react";
 import { 
   Plus, 
   Download, 
@@ -15,12 +15,12 @@ import {
   Sparkles,
   Loader2,
   Upload,
+  History,
   Image as ImageIcon
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import * as XLSX from "xlsx";
 import { format } from "date-fns";
-import { GoogleGenAI } from "@google/genai";
 import { Toaster, toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -113,14 +113,57 @@ export default function App() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [selectedTab, setSelectedTab] = useState<string>("Lunes");
-  const [isAiLoading, setIsAiLoading] = useState(false);
+
+  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
+  const [isFilesDialogOpen, setIsFilesDialogOpen] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [storedFiles, setStoredFiles] = useState<any[]>([]);
 
   // Form state
   const [formData, setFormData] = useState<Partial<Activity>>({});
 
   useEffect(() => {
     fetchActivities();
+    fetchStoredFiles();
   }, []);
+
+  const fetchStoredFiles = async () => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('archivos_ingenieria')
+        .list('', {
+          limit: 100,
+          offset: 0,
+          sortBy: { column: 'name', order: 'desc' },
+        });
+
+      if (error) throw error;
+      setStoredFiles(data || []);
+    } catch (error) {
+      console.error("Error fetching files:", error);
+    }
+  };
+
+  const getFileUrl = (fileName: string) => {
+    const { data } = supabase.storage
+      .from('archivos_ingenieria')
+      .getPublicUrl(fileName);
+    return data.publicUrl;
+  };
+
+  const eliminarArchivo = async (name: string) => {
+    alert('Iniciando borrado de: ' + name);
+    const { error } = await supabase.storage
+      .from('archivos_ingenieria')
+      .remove([name]);
+
+    if (error) {
+      alert('Error: ' + error.message);
+    } else {
+      alert('Borrado exitoso');
+      await fetchStoredFiles();
+    }
+  };
 
   const fetchActivities = async () => {
     setIsLoading(true);
@@ -149,6 +192,36 @@ export default function App() {
     }
   };
 
+  const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
+      const filePath = `actividades/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('archivos_ingenieria')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('archivos_ingenieria')
+        .getPublicUrl(filePath);
+
+      setFormData(prev => ({ ...prev, fichero_url: publicUrl }));
+      toast.success("Archivo subido correctamente");
+    } catch (error: any) {
+      console.error('Error uploading file:', error);
+      toast.error(`Error al subir archivo: ${error.message}`);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!formData.descripcion) {
       toast.error("Por favor completa los campos obligatorios (Actividad y Hora)");
@@ -157,8 +230,17 @@ export default function App() {
 
     const currentDay = WEEK_DAYS.find(d => d.nombre === selectedTab);
     
-    const activityId = editingActivity?.id || Math.random().toString(36).substr(2, 9);
+    // Generar ID con fallback si crypto.randomUUID no está disponible
+    const activityId = editingActivity?.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substr(2, 9));
     
+    // Generar registro de historial si se está editando
+    let nuevoHistorial = formData.historial_cambios || "";
+    if (editingActivity) {
+      const timestamp = format(new Date(), "dd/MM/yyyy HH:mm");
+      const logEntry = `[${timestamp}] - Actividad editada\n`;
+      nuevoHistorial = nuevoHistorial + logEntry;
+    }
+
     const newActivity: Activity = {
       id: activityId,
       dia: selectedTab as DayName,
@@ -173,6 +255,8 @@ export default function App() {
       ingreso: Number(formData.ingreso) || 0,
       gastos: Number(formData.gastos) || 0,
       resultado: formData.resultado || "",
+      fichero_url: formData.fichero_url || "",
+      historial_cambios: nuevoHistorial,
     };
 
     try {
@@ -190,16 +274,26 @@ export default function App() {
         ingreso: Number(formData.ingreso || 0),
         gastos: Number(formData.gastos || 0),
         resultado: formData.resultado || null,
-        numero_estudiantes: Number(formData.numero_estudiantes || 0)
+        numero_estudiantes: Number(formData.numero_estudiantes || 0),
+        fichero_url: formData.fichero_url || null,
+        historial_cambios: nuevoHistorial || null
       };
 
-      console.log("Columnas enviadas:", Object.keys(payload));
-      console.log("Valores del payload:", payload);
+      let result;
+      if (editingActivity) {
+        result = await supabase
+          .from('actividades')
+          .update(payload)
+          .eq('id', editingActivity.id)
+          .select();
+      } else {
+        result = await supabase
+          .from('actividades')
+          .insert(payload)
+          .select();
+      }
 
-      const { data, error, status, statusText } = await supabase
-        .from('actividades')
-        .insert(payload)
-        .select();
+      const { data, error, status, statusText } = result;
 
       if (error) {
         console.error("Supabase Error details:", {
@@ -213,16 +307,17 @@ export default function App() {
         throw error;
       }
 
-      if (editingActivity) {
-        setActivities(prev => prev.map(a => a.id === editingActivity.id ? newActivity : a));
-        toast.success("Actividad actualizada correctamente");
-      } else {
-        setActivities(prev => [...prev, newActivity]);
-        toast.success("Actividad añadida correctamente");
-      }
+      setActivities(prev => {
+        const updated = editingActivity 
+          ? prev.map(a => a.id === editingActivity.id ? newActivity : a)
+          : [...prev, newActivity];
+        
+        // Sincronizar backup local con el estado actualizado
+        localStorage.setItem("civil-plan-actividades", JSON.stringify(updated));
+        return updated;
+      });
 
-      // Sync local storage as backup
-      localStorage.setItem("civil-plan-actividades", JSON.stringify([...activities.filter(a => a.id !== activityId), newActivity]));
+      toast.success(editingActivity ? "Actividad actualizada correctamente" : "Actividad añadida correctamente");
 
       setIsDialogOpen(false);
       setEditingActivity(null);
@@ -235,45 +330,6 @@ export default function App() {
       if (error.code === '42P1' || error.message?.includes('column')) {
         toast.warning("Parece que hay un desajuste entre las columnas del código y la base de datos.");
       }
-    }
-  };
-
-  const suggestWithAi = async () => {
-    if (!formData.descripcion) {
-      toast.error("Ingresa primero la descripción de la actividad para sugerir requerimientos.");
-      return;
-    }
-
-    setIsAiLoading(true);
-    try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
-      
-      const prompt = `Actúa como un organizador de eventos académicos para la facultad de Ingeniería Civil. 
-      La actividad es: "${formData.descripcion}".
-      Sugiere una lista breve de requerimientos (ej: proyector, refrigerio, sonido) y un equipo de trabajo ideal (ej: comisión logística).
-      Responde SOLO en formato JSON con las llaves "requirement" (string) y "team" (string). 
-      Se breve y profesional. Lenguaje: Español.`;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-      });
-
-      const text = response.text || "";
-      const cleanJson = text.replace(/```json/g, "").replace(/```/g, "").trim();
-      const data = JSON.parse(cleanJson);
-      
-      setFormData(prev => ({
-        ...prev,
-        requisito: data.requirement,
-        equipo: data.team
-      }));
-      toast.success("Sugerencias aplicadas con éxito");
-    } catch (error) {
-      console.error(error);
-      toast.error("No se pudo obtener sugerencias de la IA.");
-    } finally {
-      setIsAiLoading(false);
     }
   };
 
@@ -385,7 +441,7 @@ export default function App() {
           
           <div className="space-y-6 relative z-10">
             <div className="inline-flex items-center gap-2 bg-white/5 border border-white/10 px-4 py-2 rounded-full mb-2">
-              <Sparkles className="w-3.5 h-3.5 text-yellow-400" />
+              <TrendingUp className="w-3.5 h-3.5 text-yellow-400" />
               <span className="text-[10px] font-black text-gray-300 uppercase tracking-widest">Plataforma de Alta Gestión</span>
             </div>
             <h1 className="text-5xl md:text-7xl font-black tracking-tighter text-white leading-[0.9]">
@@ -394,29 +450,56 @@ export default function App() {
             <p className="text-gray-400 text-lg max-w-md font-medium leading-relaxed opacity-80">
               Control total de la agenda académica, logística y presupuesto para el Centro de Estudiantes de Civil.
             </p>
-            <div className="pt-4 max-w-md">
+            <div className="pt-4 max-w-md grid grid-cols-2 gap-4">
               <div 
-                className="group/upload border-2 border-dashed border-white/10 rounded-[2.5rem] p-8 flex flex-col items-center justify-center gap-4 bg-white/[0.02] hover:bg-white/[0.05] hover:border-yellow-400/50 transition-all cursor-pointer relative overflow-hidden"
+                className="group/upload border-2 border-dashed border-white/10 rounded-[2rem] p-6 flex flex-col items-center justify-center gap-3 bg-white/[0.02] hover:bg-white/[0.05] hover:border-yellow-400/50 transition-all cursor-pointer relative overflow-hidden h-40"
                 onClick={() => document.getElementById('poster-upload')?.click()}
               >
                 <input 
                   type="file" 
                   id="poster-upload" 
                   className="hidden" 
-                  accept="image/*"
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     const file = e.target.files?.[0];
-                    if (file) toast.success(`Afiche "${file.name}" cargado exitosamente`);
+                    if (file) {
+                      setIsUploading(true);
+                      try {
+                        const fileExt = file.name.split('.').pop();
+                        const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
+                        const { error } = await supabase.storage
+                          .from('archivos_ingenieria')
+                          .upload(fileName, file);
+                        if (error) throw error;
+                        fetchStoredFiles();
+                        toast.success(`Archivo "${file.name}" subido exitosamente`);
+                      } catch (err: any) {
+                        toast.error("Error al subir: " + err.message);
+                      } finally {
+                        setIsUploading(false);
+                      }
+                    }
                   }}
                 />
-                <div className="w-16 h-16 bg-yellow-400/10 rounded-2xl flex items-center justify-center group-hover/upload:scale-110 transition-transform">
-                   <Upload className="w-8 h-8 text-yellow-400" />
+                <div className="w-12 h-12 bg-yellow-400/10 rounded-xl flex items-center justify-center group-hover/upload:scale-110 transition-transform">
+                   {isUploading ? <Loader2 className="w-6 h-6 text-yellow-400 animate-spin" /> : <Upload className="w-6 h-6 text-yellow-400" />}
                 </div>
                 <div className="text-center">
-                  <span className="text-sm font-black text-white block">Subir Afiches o Anuncios</span>
-                  <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mt-1">Formato: JPG, PNG, PDF</span>
+                  <span className="text-xs font-black text-white block uppercase tracking-widest">Subir</span>
+                  <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mt-1">Nuevos Archivos</span>
                 </div>
-                <div className="absolute inset-0 bg-gradient-to-t from-yellow-400/5 to-transparent opacity-0 group-hover/upload:opacity-100 transition-opacity" />
+              </div>
+
+              <div 
+                onClick={() => setIsFilesDialogOpen(true)}
+                className="group/view border border-white/10 rounded-[2rem] p-6 flex flex-col items-center justify-center gap-3 bg-white/5 hover:bg-white/10 hover:border-emerald-500/50 transition-all cursor-pointer h-40"
+              >
+                <div className="w-12 h-12 bg-emerald-500/10 rounded-xl flex items-center justify-center group-hover/view:scale-110 transition-transform">
+                  <ImageIcon className="w-6 h-6 text-emerald-500" />
+                </div>
+                <div className="text-center">
+                  <span className="text-xs font-black text-white block uppercase tracking-widest">Visualizar</span>
+                  <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mt-1">Biblioteca Digital</span>
+                </div>
               </div>
             </div>
           </div>
@@ -504,10 +587,6 @@ export default function App() {
                             <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest block mb-1">Día de Gestión</span>
                             <span className="text-lg font-black text-yellow-400">{selectedTab}</span>
                           </div>
-                          <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
-                            <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest block mb-1">Recomendación</span>
-                            <p className="text-[10px] text-gray-400 font-medium">Usa la IA para generar requerimientos automáticos basados en la descripción.</p>
-                          </div>
                         </div>
                       </div>
 
@@ -553,19 +632,6 @@ export default function App() {
                               value={formData.numero_estudiantes || ""}
                               onChange={(e) => setFormData({...formData, numero_estudiantes: Number(e.target.value)})}
                             />
-                          </div>
-
-                          <div className="col-span-2">
-                             <Button 
-                              type="button" 
-                              variant="secondary" 
-                              onClick={suggestWithAi}
-                              className="w-full rounded-2xl h-12 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 flex gap-2 font-black text-xs uppercase tracking-widest transition-all border border-emerald-500/20"
-                              disabled={isAiLoading || !formData.descripcion}
-                            >
-                              {isAiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                              Autocompletar con Inteligencia Artificial
-                            </Button>
                           </div>
 
                           <div className="space-y-2">
@@ -619,16 +685,137 @@ export default function App() {
                               onChange={(e) => setFormData({...formData, gastos: Number(e.target.value)})}
                             />
                           </div>
+
+                          <div className="space-y-2">
+                             <Label className="text-[10px] uppercase tracking-widest font-black text-blue-500">Gestión de Archivos</Label>
+                             <p className="text-[10px] text-gray-500 font-medium">Usa la sección de carga en la pantalla principal para gestionar afiches y documentos globales.</p>
+                          </div>
+
+                          {editingActivity && formData.historial_cambios && (
+                            <div className="col-span-2 space-y-2 pt-4">
+                              <Label className="text-[10px] uppercase tracking-widest font-black text-gray-500">Historial de Modificaciones</Label>
+                              <div className="p-4 bg-white/5 border border-white/5 rounded-2xl">
+                                <Textarea 
+                                  readOnly
+                                  value={formData.historial_cambios}
+                                  className="min-h-[100px] bg-transparent border-none text-[10px] font-mono text-gray-400 p-0 resize-none focus:ring-0"
+                                />
+                              </div>
+                            </div>
+                          )}
                         </div>
 
                         <div className="pt-10 flex gap-4">
                           <Button variant="ghost" onClick={() => setIsDialogOpen(false)} className="rounded-full h-14 px-8 font-black text-gray-500 hover:text-white hover:bg-white/5">
                             Descartar
                           </Button>
-                          <Button onClick={handleSave} className="flex-1 rounded-full h-14 px-10 bg-yellow-400 hover:bg-yellow-500 text-black font-black shadow-xl shadow-yellow-400/20 text-lg">
+                          <Button onClick={() => setIsConfirmDialogOpen(true)} className="flex-1 rounded-full h-14 px-10 bg-yellow-400 hover:bg-yellow-500 text-black font-black shadow-xl shadow-yellow-400/20 text-lg">
                             Guardar Actividad
                           </Button>
                         </div>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+
+                {/* Confirm Save Dialog */}
+                <Dialog open={isConfirmDialogOpen} onOpenChange={setIsConfirmDialogOpen}>
+                  <DialogContent className="sm:max-w-md rounded-[2rem] bg-[#1A1A1A] border border-white/10 text-white p-8">
+                    <DialogHeader className="space-y-4">
+                      <div className="w-12 h-12 bg-yellow-400/10 rounded-2xl flex items-center justify-center mx-auto mb-2">
+                        <Sparkles className="w-6 h-6 text-yellow-400" />
+                      </div>
+                      <DialogTitle className="text-2xl font-black tracking-tighter text-center">Confirmar Registro</DialogTitle>
+                      <DialogDescription className="text-gray-400 text-center font-medium text-base">
+                        ¿Estás seguro de guardar esta actividad o revisarla nuevamente?
+                      </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="flex flex-row gap-3 mt-8">
+                      <Button 
+                        variant="ghost" 
+                        onClick={() => setIsConfirmDialogOpen(false)} 
+                        className="flex-1 rounded-full h-12 font-black text-xs uppercase tracking-widest text-gray-500 hover:text-white hover:bg-white/5 border border-white/5"
+                      >
+                        Revisar
+                      </Button>
+                      <Button 
+                        onClick={() => {
+                          setIsConfirmDialogOpen(false);
+                          handleSave();
+                        }} 
+                        className="flex-1 rounded-full h-12 bg-yellow-400 hover:bg-yellow-500 text-black font-black uppercase tracking-widest text-xs"
+                      >
+                        Confirmar
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+
+                {/* Global File Viewer Dialog */}
+                <Dialog open={isFilesDialogOpen} onOpenChange={setIsFilesDialogOpen}>
+                  <DialogContent className="sm:max-w-4xl rounded-[2.5rem] bg-[#1A1A1A] border border-white/10 text-white p-0 overflow-hidden">
+                    <div className="flex flex-col h-[70vh]">
+                      <div className="p-8 border-b border-white/5 bg-black/20">
+                         <div className="flex items-center gap-4 mb-4">
+                            <div className="w-12 h-12 bg-emerald-500/10 rounded-2xl flex items-center justify-center">
+                              <ImageIcon className="w-6 h-6 text-emerald-500" />
+                            </div>
+                            <div>
+                               <DialogTitle className="text-2xl font-black tracking-tighter uppercase">Biblioteca de Archivos</DialogTitle>
+                               <DialogDescription className="text-gray-400 font-medium">Visualiza y gestiona todos los recursos digitales de la semana.</DialogDescription>
+                            </div>
+                         </div>
+                      </div>
+
+                      <div className="flex-1 overflow-y-auto p-8 pr-4 space-y-4 scrollbar-hide">
+                        {storedFiles.length === 0 ? (
+                          <div className="h-full flex flex-col items-center justify-center space-y-4 opacity-50">
+                             <Upload className="w-12 h-12 text-gray-600" />
+                             <p className="font-black text-xs uppercase tracking-widest text-gray-600">No hay archivos subidos aún</p>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {storedFiles.map((file) => (
+                              <div key={file.id} className="bg-white/5 border border-white/5 rounded-2xl p-4 flex items-center justify-between group hover:border-yellow-400/30 transition-all">
+                                <div className="flex items-center gap-4 overflow-hidden">
+                                  <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center shrink-0">
+                                    <FileText className="w-5 h-5 text-gray-400" />
+                                  </div>
+                                  <div className="flex flex-col overflow-hidden">
+                                    <span className="text-xs font-black text-white truncate max-w-[200px] uppercase tracking-wider">{file.name}</span>
+                                    <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-0.5">Subido el {format(new Date(file.created_at), "dd/MM HH:mm")}</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Button 
+                                    variant="ghost" 
+                                    className="rounded-full h-10 px-4 font-black text-[10px] uppercase tracking-widest hover:bg-yellow-400 hover:text-black transition-all"
+                                    onClick={() => window.open(getFileUrl(file.name), '_blank')}
+                                  >
+                                    Abrir
+                                  </Button>
+                                  <button 
+                                    onClick={(e) => { 
+                                      e.stopPropagation(); 
+                                      window.confirm('¿Eliminar?') && eliminarArchivo(file.name); 
+                                    }} 
+                                    style={{ color: 'red', cursor: 'pointer', padding: '10px' }}
+                                    className="hover:bg-red-500/10 rounded-full transition-all flex items-center justify-center"
+                                  > 
+                                    <Trash2 className="w-5 h-5" />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="p-8 border-t border-white/5 bg-black/20 flex justify-end items-center gap-4">
+                         <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">{storedFiles.length} Archivos Almacenados</span>
+                         <Button onClick={() => setIsFilesDialogOpen(false)} className="rounded-full px-8 h-12 bg-white/5 border border-white/10 text-white font-black uppercase tracking-widest text-[10px]">
+                           Cerrar
+                         </Button>
                       </div>
                     </div>
                   </DialogContent>
@@ -748,8 +935,33 @@ export default function App() {
                                       <span className="text-xs font-medium text-gray-500 italic max-w-[250px] leading-relaxed">
                                         {activity.requisito || "Análisis técnico pendiente"}
                                       </span>
+                                      {activity.fichero_url && (
+                                        <a 
+                                          href={activity.fichero_url} 
+                                          target="_blank" 
+                                          rel="noreferrer"
+                                          className="mt-2 flex items-center gap-2 text-[10px] font-black text-blue-400 uppercase tracking-widest hover:text-blue-300 transition-colors"
+                                        >
+                                          <FileText className="w-3 h-3" />
+                                          Ver Adjunto
+                                        </a>
+                                      )}
                                     </div>
                                   </div>
+                                  
+                                  {activity.historial_cambios && (
+                                    <div className="flex items-start gap-4 pt-4 border-t border-white/5 opacity-60">
+                                      <div className="mt-0.5 p-1.5 bg-white/5 rounded-lg border border-white/10">
+                                        <History className="w-3 h-3 text-gray-500" />
+                                      </div>
+                                      <div className="flex flex-col">
+                                        <span className="text-[8px] font-black uppercase tracking-widest text-gray-600 mb-1">Registro de Auditoría</span>
+                                        <div className="text-[9px] text-gray-500 font-mono whitespace-pre-line leading-tight">
+                                          {activity.historial_cambios}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               </TableCell>
                               <TableCell className="py-10 align-top text-right px-4">

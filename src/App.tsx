@@ -122,6 +122,16 @@ export default function App() {
   // Form state
   const [formData, setFormData] = useState<Partial<Activity>>({});
 
+  const financialStats = useMemo(() => {
+    // Conversión Numérica Estricta: Usamos parseFloat para asegurar que incluso los strings de Supabase se sumen correctamente
+    const totalIngreso = activities.reduce((acc, act) => acc + (parseFloat(String(act.ingreso)) || 0), 0);
+    const totalGastos = activities.reduce((acc, act) => acc + (parseFloat(String(act.gastos)) || 0), 0);
+    const balance = totalIngreso - totalGastos;
+    const totalEstudiantes = activities.reduce((acc, act) => acc + (parseInt(String(act.numero_estudiantes)) || 0), 0);
+    
+    return { totalIngreso, totalGastos, balance, totalEstudiantes };
+  }, [activities]); // Sincronización de Estado: Depende directamente del array principal
+
   useEffect(() => {
     fetchActivities();
     fetchStoredFiles();
@@ -175,8 +185,9 @@ export default function App() {
 
       if (error) throw error;
       
-      // If data is successfully fetched (even if empty), use it
-      setActivities(data || []);
+      const activitiesToSet = data || [];
+      setActivities(activitiesToSet);
+      localStorage.setItem("civil-plan-actividades", JSON.stringify(activitiesToSet));
       
     } catch (error) {
       console.error("Error loading activities:", error);
@@ -307,15 +318,16 @@ export default function App() {
         throw error;
       }
 
+      // Lógica de Refresco: Actualizamos el estado local inmediatamente para que el balance cambie al instante
       setActivities(prev => {
         const updated = editingActivity 
           ? prev.map(a => a.id === editingActivity.id ? newActivity : a)
           : [...prev, newActivity];
-        
-        // Sincronizar backup local con el estado actualizado
-        localStorage.setItem("civil-plan-actividades", JSON.stringify(updated));
         return updated;
       });
+
+      // Recalculado Automático: Refrescamos desde Supabase para confirmar persistencia
+      await fetchActivities();
 
       toast.success(editingActivity ? "Actividad actualizada correctamente" : "Actividad añadida correctamente");
 
@@ -349,8 +361,10 @@ export default function App() {
 
       if (error) throw error;
 
+      // Actualización Optimista: Removemos de la lista local inmediatamente
       setActivities(prev => prev.filter(a => a.id !== id));
-      localStorage.setItem("civil-plan-actividades", JSON.stringify(activities.filter(a => a.id !== id)));
+      
+      await fetchActivities();
       toast.info("Actividad eliminada");
     } catch (error) {
       console.error("Error deleting from Supabase:", error);
@@ -512,7 +526,7 @@ export default function App() {
             <Card className="rounded-[2.5rem] border border-white/5 bg-[#1A1A1A] text-white p-8 space-y-2 group transition-all hover:border-emerald-500/30">
               <span className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Estudiantes</span>
               <div className="text-5xl font-black tracking-tighter text-emerald-500">
-                {activities.reduce((acc, a) => acc + (Number(a.numero_estudiantes) || 0), 0)}
+                {financialStats.totalEstudiantes}
               </div>
             </Card>
             <Card className="rounded-[2.5rem] border border-white/5 bg-[#1A1A1A] text-white p-8 space-y-2 group transition-all hover:border-white/20 col-span-2">
@@ -520,17 +534,17 @@ export default function App() {
                  <div>
                     <span className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Balance Financiero</span>
                     <div className="text-4xl font-black tracking-tighter mt-1">
-                      {activities.reduce((acc, a) => acc + (Number(a.ingreso) || 0) - (Number(a.gastos) || 0), 0)}<span className="text-sm ml-1 text-gray-600">Bs</span>
+                      {financialStats.balance}<span className="text-sm ml-1 text-gray-600">Bs</span>
                     </div>
                  </div>
                  <div className="flex gap-4">
                     <div className="text-right">
                       <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest block">Ingresos</span>
-                      <span className="font-bold text-emerald-500">+{activities.reduce((acc, a) => acc + (Number(a.ingreso) || 0), 0)}</span>
+                      <span className="font-bold text-emerald-500">+{financialStats.totalIngreso}</span>
                     </div>
                     <div className="text-right">
                       <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest block">Gastos</span>
-                      <span className="font-bold text-rose-500">-{activities.reduce((acc, a) => acc + (Number(a.gastos) || 0), 0)}</span>
+                      <span className="font-bold text-rose-500">-{financialStats.totalGastos}</span>
                     </div>
                  </div>
                </div>
@@ -629,7 +643,7 @@ export default function App() {
                               type="number"
                               placeholder="Ej: 150"
                               className="h-14 bg-white/5 border-white/10 rounded-2xl focus:ring-yellow-400 text-white font-bold"
-                              value={formData.numero_estudiantes || ""}
+                              value={formData.numero_estudiantes ?? ""}
                               onChange={(e) => setFormData({...formData, numero_estudiantes: Number(e.target.value)})}
                             />
                           </div>
@@ -670,7 +684,7 @@ export default function App() {
                               type="number" 
                               placeholder="0"
                               className="h-14 bg-emerald-500/5 border-emerald-500/20 rounded-2xl font-black text-emerald-500"
-                              value={formData.ingreso || ""}
+                              value={formData.ingreso ?? ""}
                               onChange={(e) => setFormData({...formData, ingreso: Number(e.target.value)})}
                             />
                           </div>
@@ -681,7 +695,7 @@ export default function App() {
                               type="number" 
                               placeholder="0"
                               className="h-14 bg-rose-500/5 border-rose-500/20 rounded-2xl font-black text-rose-500"
-                              value={formData.gastos || ""}
+                              value={formData.gastos ?? ""}
                               onChange={(e) => setFormData({...formData, gastos: Number(e.target.value)})}
                             />
                           </div>

@@ -123,14 +123,14 @@ export default function App() {
   const [formData, setFormData] = useState<Partial<Activity>>({});
 
   const financialStats = useMemo(() => {
-    // Conversión Numérica Estricta: Usamos parseFloat para asegurar que incluso los strings de Supabase se sumen correctamente
-    const totalIngreso = activities.reduce((acc, act) => acc + (parseFloat(String(act.ingreso)) || 0), 0);
-    const totalGastos = activities.reduce((acc, act) => acc + (parseFloat(String(act.gastos)) || 0), 0);
+    // Conversión Numérica Estricta: Aseguramos que tratamos todo como número real
+    const totalIngreso = activities.reduce((acc, act) => acc + (Number(act.ingreso) || 0), 0);
+    const totalGastos = activities.reduce((acc, act) => acc + (Number(act.gastos) || 0), 0);
     const balance = totalIngreso - totalGastos;
-    const totalEstudiantes = activities.reduce((acc, act) => acc + (parseInt(String(act.numero_estudiantes)) || 0), 0);
+    const totalEstudiantes = activities.reduce((acc, act) => acc + (Number(act.numero_estudiantes) || 0), 0);
     
     return { totalIngreso, totalGastos, balance, totalEstudiantes };
-  }, [activities]); // Sincronización de Estado: Depende directamente del array principal
+  }, [activities]); 
 
   useEffect(() => {
     fetchActivities();
@@ -248,8 +248,10 @@ export default function App() {
     let nuevoHistorial = formData.historial_cambios || "";
     if (editingActivity) {
       const timestamp = format(new Date(), "dd/MM/yyyy HH:mm");
+      // Detectar qué cambió para un log más preciso (opcional pero recomendado)
       const logEntry = `[${timestamp}] - Actividad editada\n`;
-      nuevoHistorial = nuevoHistorial + logEntry;
+      // Aseguramos que se acumula correctamente
+      nuevoHistorial = nuevoHistorial.trim() ? nuevoHistorial.trim() + "\n" + logEntry : logEntry;
     }
 
     const newActivity: Activity = {
@@ -304,32 +306,25 @@ export default function App() {
           .select();
       }
 
-      const { data, error, status, statusText } = result;
+      const { data, error } = result;
 
-      if (error) {
-        console.error("Supabase Error details:", {
-          message: error.message,
-          code: error.code,
-          details: error.details,
-          hint: error.hint,
-          status,
-          statusText
-        });
-        throw error;
-      }
+      if (error) throw error;
 
-      // Lógica de Refresco: Actualizamos el estado local inmediatamente para que el balance cambie al instante
+      // Lógica de Refresco: Si Supabase nos devuelve el registro actualizado, lo usamos.
+      // Si no, usamos nuestro objeto local.
+      const savedActivity = (data && data[0]) ? (data[0] as Activity) : newActivity;
+
       setActivities(prev => {
         const updated = editingActivity 
-          ? prev.map(a => a.id === editingActivity.id ? newActivity : a)
-          : [...prev, newActivity];
+          ? prev.map(a => a.id === editingActivity.id ? savedActivity : a)
+          : [...prev, savedActivity];
+        
+        // Guardar copia local de seguridad
+        localStorage.setItem("civil-plan-actividades", JSON.stringify(updated));
         return updated;
       });
 
-      // Recalculado Automático: Refrescamos desde Supabase para confirmar persistencia
-      await fetchActivities();
-
-      toast.success(editingActivity ? "Actividad actualizada correctamente" : "Actividad añadida correctamente");
+      toast.success(editingActivity ? "Actividad actualizada" : "Actividad añadida");
 
       setIsDialogOpen(false);
       setEditingActivity(null);
@@ -990,7 +985,7 @@ export default function App() {
                                   </div>
                                   <div className="h-px bg-white/5 w-16 my-1" />
                                   <span className="text-base font-black text-white">
-                                    {(activity.ingreso || 0) - (activity.gastos || 0)} <span className="text-[9px] text-gray-600 uppercase">Bs</span>
+                                    {(Number(activity.ingreso) || 0) - (Number(activity.gastos) || 0)} <span className="text-[9px] text-gray-600 uppercase">Bs</span>
                                   </span>
                                 </div>
                               </TableCell>

@@ -482,14 +482,15 @@ export default function App() {
               <Button 
                 variant="ghost" 
                 onClick={() => {
+                  localStorage.removeItem("civil-plan-actividades");
                   fetchActivities();
                   fetchStoredFiles();
-                  toast.success("Datos actualizados manualmente");
+                  toast.success("Caché limpiada y datos sincronizados");
                 }} 
                 className="rounded-full text-white hover:bg-white/10 flex gap-2 font-black text-[10px] uppercase tracking-widest"
               >
                 <History className="w-3.5 h-3.5" />
-                Refrescar
+                Sincronizar Ahora
               </Button>
               <Button variant="ghost" onClick={exportToExcel} className="rounded-full text-white hover:bg-white/10 flex gap-2 font-bold text-xs uppercase tracking-widest">
                 <Download className="w-4 h-4" />
@@ -1031,11 +1032,11 @@ export default function App() {
                               <TableCell className="py-10 align-top text-right px-4">
                                 <div className="flex flex-col items-end gap-2">
                                   <div className="flex items-center gap-2 text-emerald-500 bg-emerald-500/5 px-2 py-0.5 rounded-lg border border-emerald-500/10">
-                                    <span className="text-sm font-black">+{activity.ingreso}</span>
+                                    <span className="text-sm font-black">+{Number(activity.ingreso)}</span>
                                     <TrendingUp className="w-3 h-3" />
                                   </div>
                                   <div className="flex items-center gap-2 text-rose-500 bg-rose-500/5 px-2 py-0.5 rounded-lg border border-rose-500/10">
-                                    <span className="text-sm font-black">-{activity.gastos}</span>
+                                    <span className="text-sm font-black">-{Number(activity.gastos)}</span>
                                     <TrendingDown className="w-3 h-3" />
                                   </div>
                                   <div className="h-px bg-white/5 w-16 my-1" />

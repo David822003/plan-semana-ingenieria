@@ -123,11 +123,23 @@ export default function App() {
   const [formData, setFormData] = useState<Partial<Activity>>({});
 
   const financialStats = useMemo(() => {
-    // Conversión Numérica Estricta: Aseguramos que tratamos todo como número real
-    const totalIngreso = activities.reduce((acc, act) => acc + (Number(act.ingreso) || 0), 0);
-    const totalGastos = activities.reduce((acc, act) => acc + (Number(act.gastos) || 0), 0);
+    // Conversión Numérica Estricta: Aseguramos que tratamos todo como número real, manejando casos de texto de Supabase
+    const totalIngreso = activities.reduce((acc, act) => {
+      const val = typeof act.ingreso === 'string' ? parseFloat(act.ingreso) : act.ingreso;
+      return acc + (Number(val) || 0);
+    }, 0);
+    
+    const totalGastos = activities.reduce((acc, act) => {
+      const val = typeof act.gastos === 'string' ? parseFloat(act.gastos) : act.gastos;
+      return acc + (Number(val) || 0);
+    }, 0);
+    
     const balance = totalIngreso - totalGastos;
-    const totalEstudiantes = activities.reduce((acc, act) => acc + (Number(act.numero_estudiantes) || 0), 0);
+    
+    const totalEstudiantes = activities.reduce((acc, act) => {
+      const val = typeof act.numero_estudiantes === 'string' ? parseInt(act.numero_estudiantes) : act.numero_estudiantes;
+      return acc + (Number(val) || 0);
+    }, 0);
     
     return { totalIngreso, totalGastos, balance, totalEstudiantes };
   }, [activities]); 
@@ -248,10 +260,20 @@ export default function App() {
     let nuevoHistorial = formData.historial_cambios || "";
     if (editingActivity) {
       const timestamp = format(new Date(), "dd/MM/yyyy HH:mm");
-      // Detectar qué cambió para un log más preciso (opcional pero recomendado)
-      const logEntry = `[${timestamp}] - Actividad editada\n`;
-      // Aseguramos que se acumula correctamente
-      nuevoHistorial = nuevoHistorial.trim() ? nuevoHistorial.trim() + "\n" + logEntry : logEntry;
+      
+      // Construir mensaje detallado de lo que cambió
+      let cambios = [];
+      if (formData.descripcion !== editingActivity.descripcion) cambios.push("Actividad");
+      if (formData.tiempo !== editingActivity.tiempo) cambios.push("Horario");
+      if (formData.ingreso !== editingActivity.ingreso) cambios.push("Ingresos");
+      if (formData.gastos !== editingActivity.gastos) cambios.push("Gastos");
+      
+      const detalle = cambios.length > 0 ? ` (Cambios en: ${cambios.join(", ")})` : "";
+      const logEntry = `[${timestamp}] - Actividad editada${detalle}`;
+      
+      // Acumulación limpia: evitamos duplicados o saltos de línea excesivos
+      const historialLimpio = nuevoHistorial.trim();
+      nuevoHistorial = historialLimpio ? `${historialLimpio}\n${logEntry}` : logEntry;
     }
 
     const newActivity: Activity = {

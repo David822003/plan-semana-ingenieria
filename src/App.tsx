@@ -63,7 +63,7 @@ const INITIAL_ACTIVITIES: Activity[] = [
     equipo: "Estudiantes 5to Semestre",
     requisito: "Proyector, Audio, Stand",
     ingreso: 0,
-    gastos: 500,
+    gastos: 0,
     resultado: "En Planificación",
   },
   {
@@ -75,8 +75,8 @@ const INITIAL_ACTIVITIES: Activity[] = [
     responsable: "Ing. Vanesa Delgado",
     equipo: "Auxiliares de Cátedra",
     requisito: "Sala de Conferencias",
-    ingreso: 1200,
-    gastos: 200,
+    ingreso: 0,
+    gastos: 0,
     resultado: "Confirmado",
   },
   {
@@ -89,7 +89,7 @@ const INITIAL_ACTIVITIES: Activity[] = [
     equipo: "Protocolo",
     requisito: "Salón Auditorio",
     ingreso: 0,
-    gastos: 300,
+    gastos: 0,
     resultado: "Programado",
   },
   {
@@ -101,8 +101,8 @@ const INITIAL_ACTIVITIES: Activity[] = [
     responsable: "Centro de Estudiantes",
     equipo: "Comisión Social",
     requisito: "Local, Sonido, Cena",
-    ingreso: 5000,
-    gastos: 4500,
+    ingreso: 0,
+    gastos: 0,
     resultado: "Venta de Entradas",
   }
 ];
@@ -149,6 +149,9 @@ export default function App() {
   }, [activities]); 
 
   useEffect(() => {
+    // Limpieza de caché forzada al cargar para evitar datos obsoletos en Vercel/Shared Link
+    localStorage.removeItem("civil-plan-actividades");
+    
     fetchActivities();
     fetchStoredFiles();
 
@@ -447,6 +450,29 @@ export default function App() {
     toast.success("Excel exportado exitosamente");
   };
 
+  const handleResetFinancials = async () => {
+    if (!confirm("¿Estás seguro de que deseas poner a 0 todos los ingresos y gastos de TODAS las actividades en el servidor de forma persistente?")) return;
+    
+    setIsLoading(true);
+    try {
+      const { data } = await supabase.from('actividades').select('id');
+      if (data) {
+        const updates = data.map(item => 
+          supabase.from('actividades').update({ ingreso: 0, gastos: 0 }).eq('id', item.id)
+        );
+        await Promise.all(updates);
+      }
+      localStorage.removeItem("civil-plan-actividades");
+      await fetchActivities();
+      toast.success("Sincronización total: Todos los valores financieros se han puesto en 0");
+    } catch (error) {
+      console.error("Error resetting financials:", error);
+      toast.error("Error al resetear valores financieros");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const filteredActivities = useMemo(() => {
     return activities
       .filter(a => a.dia === selectedTab)
@@ -479,6 +505,14 @@ export default function App() {
                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                  <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Sincronización Activa</span>
               </div>
+              <Button 
+                variant="ghost" 
+                onClick={handleResetFinancials}
+                className="rounded-full text-white hover:bg-rose-500/20 flex gap-2 font-black text-[10px] uppercase tracking-widest text-rose-500"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Reset 0bs
+              </Button>
               <Button 
                 variant="ghost" 
                 onClick={() => {

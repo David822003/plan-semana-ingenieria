@@ -124,21 +124,25 @@ export default function App() {
 
   const financialStats = useMemo(() => {
     // Conversión Numérica Estricta: Aseguramos que tratamos todo como número real, manejando casos de texto de Supabase
+    // Evitamos el uso de || 0 que puede ser ambiguo con valores nulos vs ceros intencionales
     const totalIngreso = activities.reduce((acc, act) => {
-      const val = typeof act.ingreso === 'string' ? parseFloat(act.ingreso) : act.ingreso;
-      return acc + (Number(val) || 0);
+      const val = act.ingreso;
+      const num = typeof val === 'number' ? val : parseFloat(String(val));
+      return acc + (isNaN(num) ? 0 : num);
     }, 0);
     
     const totalGastos = activities.reduce((acc, act) => {
-      const val = typeof act.gastos === 'string' ? parseFloat(act.gastos) : act.gastos;
-      return acc + (Number(val) || 0);
+      const val = act.gastos;
+      const num = typeof val === 'number' ? val : parseFloat(String(val));
+      return acc + (isNaN(num) ? 0 : num);
     }, 0);
     
     const balance = totalIngreso - totalGastos;
     
     const totalEstudiantes = activities.reduce((acc, act) => {
-      const val = typeof act.numero_estudiantes === 'string' ? parseInt(act.numero_estudiantes) : act.numero_estudiantes;
-      return acc + (Number(val) || 0);
+      const val = act.numero_estudiantes;
+      const num = typeof val === 'number' ? val : parseInt(String(val));
+      return acc + (isNaN(num) ? 0 : num);
     }, 0);
     
     return { totalIngreso, totalGastos, balance, totalEstudiantes };
@@ -147,6 +151,23 @@ export default function App() {
   useEffect(() => {
     fetchActivities();
     fetchStoredFiles();
+
+    // Sincronización en Tiempo Real: Escuchamos cambios en la tabla para mantener todas las vistas actualizadas
+    const channel = supabase
+      .channel('actividades_db_changes')
+      .on('postgres_changes', { 
+        event: '*', 
+        table: 'actividades', 
+        schema: 'public' 
+      }, (payload) => {
+        console.log('Cambio detectado en Supabase:', payload);
+        fetchActivities();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const fetchStoredFiles = async () => {
@@ -453,16 +474,28 @@ export default function App() {
               <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mt-1">UAGRM • Ingeniería</span>
             </div>
           </div>
-          <div className="flex gap-4 items-center">
-            <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-white/5 rounded-full border border-white/10">
-               <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-               <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Semana Académica Activa</span>
+            <div className="flex gap-4 items-center">
+              <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-white/5 rounded-full border border-white/10">
+                 <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                 <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Sincronización Activa</span>
+              </div>
+              <Button 
+                variant="ghost" 
+                onClick={() => {
+                  fetchActivities();
+                  fetchStoredFiles();
+                  toast.success("Datos actualizados manualmente");
+                }} 
+                className="rounded-full text-white hover:bg-white/10 flex gap-2 font-black text-[10px] uppercase tracking-widest"
+              >
+                <History className="w-3.5 h-3.5" />
+                Refrescar
+              </Button>
+              <Button variant="ghost" onClick={exportToExcel} className="rounded-full text-white hover:bg-white/10 flex gap-2 font-bold text-xs uppercase tracking-widest">
+                <Download className="w-4 h-4" />
+                Exportar
+              </Button>
             </div>
-            <Button variant="ghost" onClick={exportToExcel} className="rounded-full text-white hover:bg-white/10 flex gap-2 font-bold text-xs uppercase tracking-widest">
-              <Download className="w-4 h-4" />
-              Exportar
-            </Button>
-          </div>
         </div>
 
         {/* Hero Section */}

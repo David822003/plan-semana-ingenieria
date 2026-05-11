@@ -278,7 +278,7 @@ export default function App() {
     const currentDay = WEEK_DAYS.find(d => d.nombre === selectedTab);
     
     // Generar ID con fallback si crypto.randomUUID no está disponible
-    const activityId = editingActivity?.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substr(2, 9));
+    const activityId = editingActivity?.id || (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substr(2, 9));
     
     // Generar registro de historial si se está editando
     let nuevoHistorial = formData.historial_cambios || "";
@@ -300,89 +300,66 @@ export default function App() {
       nuevoHistorial = historialLimpio ? `${historialLimpio}\n${logEntry}` : logEntry;
     }
 
-    const newActivity: Activity = {
-      id: activityId,
+    // Construcción del payload sanitizado
+    // Usamos Number() de forma explícita para asegurar que los valores sean numéricos
+    const payload: any = {
       dia: selectedTab as DayName,
-      fecha: currentDay?.fecha || "",
-      tiempo: formData.tiempo || "00:00",
-      fin_de_hora: formData.fin_de_hora || "",
-      descripcion: formData.descripcion || "",
-      responsable: formData.responsable || "",
-      equipo: formData.equipo || "",
-      requisito: formData.requisito || "",
-      numero_estudiantes: Number(formData.numero_estudiantes) || 0,
-      ingreso: Number(formData.ingreso) || 0,
-      gastos: Number(formData.gastos) || 0,
-      resultado: formData.resultado || "",
-      fichero_url: formData.fichero_url || "",
-      historial_cambios: nuevoHistorial,
+      fecha: currentDay?.fecha || null,
+      tiempo: formData.tiempo || null,
+      fin_de_hora: formData.fin_de_hora || null,
+      descripcion: formData.descripcion || null,
+      responsable: formData.responsable || null,
+      equipo: formData.equipo || null,
+      requisito: formData.requisito || null,
+      ingreso: isNaN(Number(formData.ingreso)) ? 0 : Number(formData.ingreso),
+      gastos: isNaN(Number(formData.gastos)) ? 0 : Number(formData.gastos),
+      resultado: formData.resultado || null,
+      numero_estudiantes: isNaN(Number(formData.numero_estudiantes)) ? 0 : Number(formData.numero_estudiantes),
+      fichero_url: formData.fichero_url || null,
+      historial_cambios: nuevoHistorial || null
     };
 
     try {
-      // Data sanitization: Ensure numbers are numbers and empty strings are null
-      const payload = {
-        id: activityId,
-        dia: selectedTab as DayName,
-        fecha: currentDay?.fecha || null,
-        tiempo: formData.tiempo || null,
-        fin_de_hora: formData.fin_de_hora || null,
-        descripcion: formData.descripcion || null,
-        responsable: formData.responsable || null,
-        equipo: formData.equipo || null,
-        requisito: formData.requisito || null,
-        ingreso: Number(formData.ingreso || 0),
-        gastos: Number(formData.gastos || 0),
-        resultado: formData.resultado || null,
-        numero_estudiantes: Number(formData.numero_estudiantes || 0),
-        fichero_url: formData.fichero_url || null,
-        historial_cambios: nuevoHistorial || null
-      };
-
+      setIsLoading(true);
       let result;
+      
       if (editingActivity) {
+        // ACTUALIZACIÓN: Usamos .update() filtrando por ID exacto
+        // No incluimos el ID en el payload del update para evitar problemas de restricción de llave primaria
         result = await supabase
-          .from('actividades')
+          .from("actividades")
           .update(payload)
-          .eq('id', editingActivity.id)
+          .eq("id", editingActivity.id)
           .select();
       } else {
+        // INSERCIÓN: Incluimos el ID generado
         result = await supabase
-          .from('actividades')
-          .insert(payload)
+          .from("actividades")
+          .insert({ ...payload, id: activityId })
           .select();
       }
 
-      const { data, error } = result;
+      const { error } = result;
 
-      if (error) throw error;
+      if (error) {
+        console.error("Error de Supabase:", error);
+        throw error;
+      }
 
-      // Lógica de Refresco: Si Supabase nos devuelve el registro actualizado, lo usamos.
-      // Si no, usamos nuestro objeto local.
-      const savedActivity = (data && data[0]) ? (data[0] as Activity) : newActivity;
+      // Sincronización Forzada: Volvemos a pedir los datos a Supabase para asegurar que la UI refleje la realidad del servidor
+      await fetchActivities();
 
-      setActivities(prev => {
-        const updated = editingActivity 
-          ? prev.map(a => a.id === editingActivity.id ? savedActivity : a)
-          : [...prev, savedActivity];
-        
-        // Guardar copia local de seguridad
-        localStorage.setItem("civil-plan-actividades", JSON.stringify(updated));
-        return updated;
-      });
-
-      toast.success(editingActivity ? "Actividad actualizada" : "Actividad añadida");
+      toast.success(editingActivity ? "✓ Sincronizado: Actividad actualizada" : "✓ Sincronizado: Actividad añadida");
 
       setIsDialogOpen(false);
       setEditingActivity(null);
       setFormData({});
     } catch (error: any) {
-      console.error("Error saving to Supabase:", error);
-      const errorMsg = error.message || error.details || "Error desconocido";
-      toast.error(`Error al guardar: ${errorMsg}`);
-      
-      if (error.code === '42P1' || error.message?.includes('column')) {
-        toast.warning("Parece que hay un desajuste entre las columnas del código y la base de datos.");
-      }
+      console.error("Error en handleSave:", error);
+      const errorMsg = error.message || error.details || "Error de red o permisos";
+      toast.error(`Fallo de Sincronización: ${errorMsg}`);
+    } finally {
+      setIsLoading(false);
     }
   };
 

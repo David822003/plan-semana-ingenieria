@@ -16,12 +16,18 @@ import {
   Loader2,
   Upload,
   History,
-  Image as ImageIcon
+  Image as ImageIcon,
+  LogIn,
+  LogOut,
+  Mail,
+  Lock,
+  ChevronRight
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import * as XLSX from "xlsx";
 import { format } from "date-fns";
 import { Toaster, toast } from "sonner";
+import { User as SupabaseUser } from "@supabase/supabase-js";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -108,6 +114,12 @@ const INITIAL_ACTIVITIES: Activity[] = [
 ];
 
 export default function App() {
+  const [user, setUser] = useState<SupabaseUser | null>(null);
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
+
   const [activities, setActivities] = useState<Activity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -149,6 +161,15 @@ export default function App() {
   }, [activities]); 
 
   useEffect(() => {
+    // Escuchar sesión de Supabase
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
     // Limpieza de caché forzada al cargar para evitar datos obsoletos en Vercel/Shared Link
     localStorage.removeItem("civil-plan-actividades");
     
@@ -169,9 +190,42 @@ export default function App() {
       .subscribe();
 
     return () => {
+      subscription.unsubscribe();
       supabase.removeChannel(channel);
     };
   }, []);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    toast.success("Sesión cerrada");
+  };
+
+  const handleAuth = async (e: any) => {
+    e.preventDefault();
+    setIsAuthLoading(true);
+    try {
+      if (authMode === "signup") {
+        const { error } = await supabase.auth.signUp({
+          email: authEmail,
+          password: authPassword,
+        });
+        if (error) throw error;
+        toast.success("Registro exitoso. Revisa tu correo (si aplica) o inicia sesión.");
+        setAuthMode("login");
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: authEmail,
+          password: authPassword,
+        });
+        if (error) throw error;
+        toast.success("¡Bienvenido de nuevo!");
+      }
+    } catch (error: any) {
+      toast.error(error.message || "Error en la autenticación");
+    } finally {
+      setIsAuthLoading(false);
+    }
+  };
 
   const fetchStoredFiles = async () => {
     try {
@@ -316,7 +370,8 @@ export default function App() {
       resultado: formData.resultado || null,
       numero_estudiantes: isNaN(Number(formData.numero_estudiantes)) ? 0 : Number(formData.numero_estudiantes),
       fichero_url: formData.fichero_url || null,
-      historial_cambios: nuevoHistorial || null
+      historial_cambios: nuevoHistorial || null,
+      usuario_email: user?.email || null
     };
 
     try {
@@ -427,34 +482,102 @@ export default function App() {
     toast.success("Excel exportado exitosamente");
   };
 
-  const handleResetFinancials = async () => {
-    if (!confirm("¿Estás seguro de que deseas poner a 0 todos los ingresos y gastos de TODAS las actividades en el servidor de forma persistente?")) return;
-    
-    setIsLoading(true);
-    try {
-      const { data } = await supabase.from('actividades').select('id');
-      if (data) {
-        const updates = data.map(item => 
-          supabase.from('actividades').update({ ingreso: 0, gastos: 0 }).eq('id', item.id)
-        );
-        await Promise.all(updates);
-      }
-      localStorage.removeItem("civil-plan-actividades");
-      await fetchActivities();
-      toast.success("Sincronización total: Todos los valores financieros se han puesto en 0");
-    } catch (error) {
-      console.error("Error resetting financials:", error);
-      toast.error("Error al resetear valores financieros");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const filteredActivities = useMemo(() => {
     return activities
       .filter(a => a.dia === selectedTab)
       .sort((a, b) => a.tiempo.localeCompare(b.tiempo));
   }, [activities, selectedTab]);
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-[#0A0A0A] text-white font-sans flex items-center justify-center p-4">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full max-w-md"
+        >
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-yellow-400 rounded-2xl shadow-2xl shadow-yellow-400/20 mb-4">
+              <CalendarIcon className="w-8 h-8 text-black" />
+            </div>
+            <h1 className="text-3xl font-black tracking-tighter mb-2">CIVIL PLAN</h1>
+            <p className="text-gray-500 text-xs font-black uppercase tracking-[0.2em]">Semana de Ingeniería Académica</p>
+          </div>
+
+          <Card className="bg-[#141414] border-white/5 shadow-2xl">
+            <CardHeader className="text-center">
+              <CardTitle className="text-xl font-black text-white uppercase tracking-widest">
+                {authMode === "login" ? "Iniciar Sesión" : "Crear Cuenta"}
+              </CardTitle>
+              <CardDescription className="text-[10px] font-bold text-gray-500 uppercase">
+                {authMode === "login" 
+                  ? "Accede al sistema de planificación" 
+                  : "Regístrate para gestionar eventos"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleAuth} className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Correo Electrónico</Label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-3 w-4 h-4 text-gray-500" />
+                    <Input 
+                      type="email" 
+                      placeholder="nombre@uagrm.edu" 
+                      className="bg-black/50 border-white/10 h-10 pl-10 focus:border-yellow-400 transition-all text-white"
+                      value={authEmail}
+                      onChange={(e) => setAuthEmail(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Contraseña</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-3 w-4 h-4 text-gray-500" />
+                    <Input 
+                      type="password" 
+                      placeholder="••••••••" 
+                      className="bg-black/50 border-white/10 h-10 pl-10 focus:border-yellow-400 transition-all text-white"
+                      value={authPassword}
+                      onChange={(e) => setAuthPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+                <Button 
+                  type="submit" 
+                  className="w-full h-11 bg-yellow-400 hover:bg-yellow-300 text-black font-black uppercase tracking-widest text-xs rounded-xl shadow-lg shadow-yellow-400/10 group"
+                  disabled={isAuthLoading}
+                >
+                  {isAuthLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      {authMode === "login" ? "Entrar ahora" : "Registrarme"}
+                      <ChevronRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
+                    </>
+                  )}
+                </Button>
+              </form>
+            </CardContent>
+            <Separator className="bg-white/5" />
+            <div className="p-6 text-center">
+              <button 
+                onClick={() => setAuthMode(authMode === "login" ? "signup" : "login")}
+                className="text-[10px] font-black text-gray-500 uppercase tracking-widest hover:text-yellow-400 transition-colors"
+              >
+                {authMode === "login" 
+                  ? "¿No tienes cuenta? Registrate aquí" 
+                  : "¿Ya tienes cuenta? Inicia sesión"}
+              </button>
+            </div>
+          </Card>
+        </motion.div>
+        <Toaster position="bottom-right" richColors closeButton />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white font-sans selection:bg-yellow-400 selection:text-black p-2 md:p-8">
@@ -484,24 +607,11 @@ export default function App() {
               </div>
               <Button 
                 variant="ghost" 
-                onClick={handleResetFinancials}
-                className="rounded-full text-white hover:bg-rose-500/20 flex gap-2 font-black text-[10px] uppercase tracking-widest text-rose-500"
+                onClick={handleLogout}
+                className="rounded-full text-white hover:bg-rose-500/10 flex gap-2 font-black text-[10px] uppercase tracking-widest text-rose-400"
               >
-                <Trash2 className="w-3.5 h-3.5" />
-                Reset 0bs
-              </Button>
-              <Button 
-                variant="ghost" 
-                onClick={() => {
-                  localStorage.removeItem("civil-plan-actividades");
-                  fetchActivities();
-                  fetchStoredFiles();
-                  toast.success("Caché limpiada y datos sincronizados");
-                }} 
-                className="rounded-full text-white hover:bg-white/10 flex gap-2 font-black text-[10px] uppercase tracking-widest"
-              >
-                <History className="w-3.5 h-3.5" />
-                Sincronizar Ahora
+                <LogOut className="w-3.5 h-3.5" />
+                Salir
               </Button>
               <Button variant="ghost" onClick={exportToExcel} className="rounded-full text-white hover:bg-white/10 flex gap-2 font-bold text-xs uppercase tracking-widest">
                 <Download className="w-4 h-4" />
@@ -1025,6 +1135,12 @@ export default function App() {
                                     </div>
                                   </div>
                                   
+                                  {activity.usuario_email && (
+                                    <div className="flex items-center gap-2 mb-2 px-2 py-1 bg-yellow-400/5 rounded-lg border border-yellow-400/10 w-fit">
+                                      <User className="w-2.5 h-2.5 text-yellow-500" />
+                                      <span className="text-[8px] font-black text-yellow-500/70 uppercase">Modificado por: {activity.usuario_email}</span>
+                                    </div>
+                                  )}
                                   {activity.historial_cambios && (
                                     <div className="flex items-start gap-4 pt-4 border-t border-white/5 opacity-60">
                                       <div className="mt-0.5 p-1.5 bg-white/5 rounded-lg border border-white/10">

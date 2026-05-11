@@ -19,6 +19,7 @@ export interface Activity {
   numero_estudiantes?: number;
   fichero_url?: string;
   historial_cambios?: string;
+  usuario_email?: string;
 }
 
 export type DayName = "Lunes" | "Martes" | "Miércoles" | "Jueves" | "Viernes";

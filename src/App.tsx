@@ -207,13 +207,18 @@ export default function App() {
     e.preventDefault();
     setIsAuthLoading(true);
     try {
+      const redirectTo = window.location.origin;
+      
       if (authMode === "signup") {
         const { error } = await supabase.auth.signUp({
           email: authEmail,
           password: authPassword,
+          options: {
+            emailRedirectTo: redirectTo
+          }
         });
         if (error) throw error;
-        toast.success("Registro exitoso. Revisa tu correo (si aplica) o inicia sesión.");
+        toast.success("Registro exitoso. Revisa tu correo para confirmar tu cuenta.");
         setAuthMode("login");
       } else {
         const { error } = await supabase.auth.signInWithPassword({
@@ -221,7 +226,14 @@ export default function App() {
           password: authPassword,
         });
         if (error) throw error;
-        toast.success("¡Bienvenido de nuevo!");
+        
+        toast.success("Acceso concedido. Sincronizando sesión...");
+        
+        // Forzamos un refresco completo para limpiar estados residuales y asegurar 
+        // que todos los hooks de Supabase detecten la nueva sesión de forma limpia.
+        setTimeout(() => {
+          window.location.href = redirectTo;
+        }, 800);
       }
     } catch (error: any) {
       toast.error(error.message || "Error en la autenticación");

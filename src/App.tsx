@@ -115,13 +115,14 @@ const INITIAL_ACTIVITIES: Activity[] = [
 
 export default function App() {
   const [user, setUser] = useState<SupabaseUser | null>(null);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [isAuthLoading, setIsAuthLoading] = useState(false);
 
   const [activities, setActivities] = useState<Activity[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [selectedTab, setSelectedTab] = useState<string>("Lunes");
@@ -134,49 +135,50 @@ export default function App() {
   // Form state
   const [formData, setFormData] = useState<Partial<Activity>>({});
 
-  const financialStats = useMemo(() => {
-    // Conversión Numérica Estricta: Aseguramos que tratamos todo como número real, manejando casos de texto de Supabase
-    // Evitamos el uso de || 0 que puede ser ambiguo con valores nulos vs ceros intencionales
-    const totalIngreso = activities.reduce((acc, act) => {
-      const val = act.ingreso;
-      const num = typeof val === 'number' ? val : parseFloat(String(val));
-      return acc + (isNaN(num) ? 0 : num);
-    }, 0);
-    
-    const totalGastos = activities.reduce((acc, act) => {
-      const val = act.gastos;
-      const num = typeof val === 'number' ? val : parseFloat(String(val));
-      return acc + (isNaN(num) ? 0 : num);
-    }, 0);
-    
-    const balance = totalIngreso - totalGastos;
-    
-    const totalEstudiantes = activities.reduce((acc, act) => {
-      const val = act.numero_estudiantes;
-      const num = typeof val === 'number' ? val : parseInt(String(val));
-      return acc + (isNaN(num) ? 0 : num);
-    }, 0);
-    
-    return { totalIngreso, totalGastos, balance, totalEstudiantes };
-  }, [activities]); 
-
+  // 1. Gestión de Sesión y Autenticación
   useEffect(() => {
-    // Escuchar sesión de Supabase
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
+    let mounted = true;
+
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (mounted) {
+        setUser(session?.user ?? null);
+        setIsAuthChecking(false);
+      }
+    };
+
+    checkSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("Auth Event:", event);
+      if (mounted) {
+        setUser(session?.user ?? null);
+        setIsAuthChecking(false);
+        
+        // Si el usuario acaba de iniciar sesión, forzamos recarga de datos
+        if (event === "SIGNED_IN" || event === "INITIAL_SESSION") {
+          fetchActivities();
+          fetchStoredFiles();
+        }
+      }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
-    // Limpieza de caché forzada al cargar para evitar datos obsoletos en Vercel/Shared Link
+  // 2. Sincronización en Tiempo Real de Datos
+  useEffect(() => {
+    if (!user) return;
+
+    // Limpieza de caché forzada al cargar para evitar datos obsoletos
     localStorage.removeItem("civil-plan-actividades");
     
     fetchActivities();
     fetchStoredFiles();
 
-    // Sincronización en Tiempo Real: Escuchamos cambios en la tabla para mantener todas las vistas actualizadas
     const channel = supabase
       .channel('actividades_db_changes')
       .on('postgres_changes', { 
@@ -190,10 +192,9 @@ export default function App() {
       .subscribe();
 
     return () => {
-      subscription.unsubscribe();
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [user?.id]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -487,6 +488,44 @@ export default function App() {
       .filter(a => a.dia === selectedTab)
       .sort((a, b) => a.tiempo.localeCompare(b.tiempo));
   }, [activities, selectedTab]);
+
+  const financialStats = useMemo(() => {
+    const totalIngreso = activities.reduce((acc, act) => {
+      const val = act.ingreso;
+      const num = typeof val === 'number' ? val : parseFloat(String(val));
+      return acc + (isNaN(num) ? 0 : num);
+    }, 0);
+    
+    const totalGastos = activities.reduce((acc, act) => {
+      const val = act.gastos;
+      const num = typeof val === 'number' ? val : parseFloat(String(val));
+      return acc + (isNaN(num) ? 0 : num);
+    }, 0);
+    
+    const balance = totalIngreso - totalGastos;
+    
+    const totalEstudiantes = activities.reduce((acc, act) => {
+      const val = act.numero_estudiantes;
+      const num = typeof val === 'number' ? val : parseInt(String(val));
+      return acc + (isNaN(num) ? 0 : num);
+    }, 0);
+    
+    return { totalIngreso, totalGastos, balance, totalEstudiantes };
+  }, [activities]);
+
+  if (isAuthChecking) {
+    return (
+      <div className="min-h-screen bg-[#0A0A0A] flex flex-col items-center justify-center gap-4">
+        <div className="inline-flex items-center justify-center w-16 h-16 bg-yellow-400 rounded-2xl shadow-2xl shadow-yellow-400/20 mb-2">
+          <CalendarIcon className="w-8 h-8 text-black animate-pulse" />
+        </div>
+        <div className="flex flex-col items-center gap-2">
+          <Loader2 className="w-6 h-6 text-yellow-400 animate-spin" />
+          <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em]">Validando Sesión...</span>
+        </div>
+      </div>
+    );
+  }
 
   if (!user) {
     return (

@@ -114,6 +114,7 @@ const INITIAL_ACTIVITIES: Activity[] = [
 ];
 
 export default function App() {
+  const [isMounted, setIsMounted] = useState(false);
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
@@ -137,6 +138,7 @@ export default function App() {
 
   // 1. Gestión de Sesión y Autenticación
   useEffect(() => {
+    setIsMounted(true);
     let mounted = true;
 
     const checkSession = async () => {
@@ -512,6 +514,8 @@ export default function App() {
     
     return { totalIngreso, totalGastos, balance, totalEstudiantes };
   }, [activities]);
+
+  if (!isMounted) return null;
 
   if (isAuthChecking) {
     return (

@@ -1,0 +1,1 @@
+Folder for public assets like logo_civil.png. Please upload the logo here.

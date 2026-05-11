@@ -552,8 +552,17 @@ export default function App() {
           className="w-full max-w-md"
         >
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-yellow-400 rounded-2xl shadow-2xl shadow-yellow-400/20 mb-4">
-              <CalendarIcon className="w-8 h-8 text-black" />
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-2xl shadow-2xl shadow-yellow-400/20 mb-4 overflow-hidden p-2">
+              <img 
+                src="https://i.postimg.cc/2S1QVWRZ/logo-civil.png" 
+                alt="Logo Civil" 
+                className="w-full h-full object-contain"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                  e.currentTarget.parentElement?.querySelector('.fallback-icon')?.classList.remove('hidden');
+                }}
+              />
+              <CalendarIcon className="w-8 h-8 text-black hidden fallback-icon" />
             </div>
             <h1 className="text-3xl font-black tracking-tighter mb-2">CIVIL PLAN</h1>
             <p className="text-gray-500 text-xs font-black uppercase tracking-[0.2em]">Semana de Ingeniería Académica</p>
@@ -647,12 +656,21 @@ export default function App() {
         {/* Navigation Bar */}
         <div className="flex items-center justify-between bg-[#141414] px-8 py-4 rounded-3xl border border-white/5 shadow-2xl backdrop-blur-md">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-yellow-400 rounded-xl flex items-center justify-center shadow-lg shadow-yellow-400/20">
-              <CalendarIcon className="w-5 h-5 text-black" />
+            <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-lg shadow-yellow-400/20 overflow-hidden p-1">
+              <img 
+                src="https://i.postimg.cc/2S1QVWRZ/logo-civil.png" 
+                alt="Logo" 
+                className="w-full h-full object-contain"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                  e.currentTarget.parentElement?.querySelector('.fallback-icon')?.classList.remove('hidden');
+                }}
+              />
+              <CalendarIcon className="w-5 h-5 text-black hidden fallback-icon" />
             </div>
             <div className="flex flex-col">
               <span className="text-lg font-black tracking-tighter leading-none text-white">CIVIL<span className="text-yellow-400">PLAN</span></span>
-              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mt-1">UAGRM • Ingeniería</span>
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">UAGRM • Ingeniería</span>
             </div>
           </div>
             <div className="flex gap-4 items-center">
@@ -686,10 +704,10 @@ export default function App() {
               <span className="text-[10px] font-black text-gray-300 uppercase tracking-widest">Plataforma de Alta Gestión</span>
             </div>
             <h1 className="text-5xl md:text-7xl font-black tracking-tighter text-white leading-[0.9]">
-              Maestría en <span className="text-yellow-400">Planificación</span>
+              Cronograma de <span className="text-yellow-400">actividades</span>
             </h1>
             <p className="text-gray-400 text-lg max-w-md font-medium leading-relaxed opacity-80">
-              Control total de la agenda académica, logística y presupuesto para el Centro de Estudiantes de Civil.
+              Control total de la agenda académica, logística y presupuesto para la semana de la carrera de ingeniería civil.
             </p>
             <div className="pt-4 max-w-md grid grid-cols-2 gap-4">
               <div 

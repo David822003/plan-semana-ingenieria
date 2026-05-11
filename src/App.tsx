@@ -1116,153 +1116,131 @@ export default function App() {
                   transition={{ duration: 0.2 }}
                 >
                   <TabsContent value={selectedTab} className="mt-0 focus-visible:outline-none focus:outline-none outline-none">
-                  <div className="bg-[#141414] rounded-[3rem] border border-white/5 shadow-3xl overflow-hidden">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="border-b border-white/5 hover:bg-transparent bg-black/20">
-                          <TableHead className="w-[120px] py-10 px-10 text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">Horario</TableHead>
-                          <TableHead className="py-10 text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">Actividad / Responsable</TableHead>
-                          <TableHead className="py-10 text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">Logística & Estudiantes</TableHead>
-                          <TableHead className="py-10 text-[10px] font-black uppercase tracking-[0.3em] text-gray-500 text-right">Económico</TableHead>
-                          <TableHead className="py-10 text-[10px] font-black uppercase tracking-[0.3em] text-gray-500 text-center">Estado</TableHead>
-                          <TableHead className="w-[120px] py-10 pr-10"></TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredActivities.length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={6} className="h-[500px] text-center">
-                              <div className="flex flex-col items-center justify-center space-y-8">
-                                <div className="w-32 h-32 bg-white/5 rounded-[2.5rem] flex items-center justify-center border border-white/5">
-                                  <ClipboardList className="w-12 h-12 text-gray-700" />
-                                </div>
-                                <div className="space-y-4 max-w-xs">
-                                  <h3 className="text-3xl font-black text-white tracking-tighter">Sin registros</h3>
-                                  <p className="text-gray-500 font-medium text-sm leading-relaxed">No hay actividades programadas para este día en la agenda académica.</p>
-                                </div>
-                                <Button 
-                                  variant="outline" 
-                                  className="rounded-full px-10 h-14 border-2 border-white/10 text-yellow-400 font-black uppercase tracking-widest hover:bg-yellow-400 hover:text-black hover:border-yellow-400"
-                                  onClick={() => setIsDialogOpen(true)}
-                                >
-                                  Empezar Ahora
-                                </Button>
+                    <div className="space-y-6">
+                      {filteredActivities.length === 0 ? (
+                        <div className="bg-[#141414] rounded-[3rem] border border-white/5 shadow-3xl p-20 text-center">
+                          <div className="flex flex-col items-center justify-center space-y-8">
+                            <div className="w-32 h-32 bg-white/5 rounded-[2.5rem] flex items-center justify-center border border-white/5">
+                              <ClipboardList className="w-12 h-12 text-gray-700" />
+                            </div>
+                            <div className="space-y-4 max-w-xs">
+                              <h3 className="text-3xl font-black text-white tracking-tighter">Sin registros</h3>
+                              <p className="text-gray-500 font-medium text-sm leading-relaxed">No hay actividades programadas para este día en la agenda académica.</p>
+                            </div>
+                            <Button 
+                              variant="outline" 
+                              className="rounded-full px-10 h-14 border-2 border-white/10 text-yellow-400 font-black uppercase tracking-widest hover:bg-yellow-400 hover:text-black hover:border-yellow-400"
+                              onClick={() => setIsDialogOpen(true)}
+                            >
+                              Empezar Ahora
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 gap-6">
+                          {filteredActivities.map((activity) => (
+                            <div 
+                              key={activity.id} 
+                              className="group bg-[#141414] border border-white/5 rounded-[2.5rem] p-6 md:p-10 hover:bg-white/[0.02] transition-all relative overflow-hidden shadow-2xl flex flex-col md:flex-row gap-8 items-start md:items-center"
+                            >
+                              {/* Decoración lateral de estado */}
+                              <div className={`absolute left-0 top-0 bottom-0 w-1.5 transition-all ${
+                                activity.resultado?.toLowerCase().includes("confirmado") ? "bg-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.4)]" :
+                                activity.resultado?.toLowerCase().includes("programado") ? "bg-yellow-400 shadow-[0_0_20px_rgba(250,204,21,0.4)]" :
+                                activity.resultado?.toLowerCase().includes("plan") ? "bg-white/20" : "bg-white/5"
+                              }`} />
+
+                              {/* Sección 1: Horario */}
+                              <div className="flex flex-col min-w-[120px] items-center md:items-start text-center md:text-left">
+                                <span className="text-3xl font-black font-mono text-white group-hover:text-yellow-400 transition-colors tracking-tighter">
+                                  {activity.tiempo}
+                                </span>
+                                {activity.fin_de_hora && (
+                                  <span className="text-[10px] text-gray-500 font-bold uppercase mt-1">hasta {activity.fin_de_hora}</span>
+                                )}
+                                <span className="text-[9px] font-black text-gray-600 uppercase tracking-widest mt-2 border-t border-white/5 pt-2 w-full">Horario</span>
                               </div>
-                            </TableCell>
-                          </TableRow>
-                        ) : (
-                          filteredActivities.map((activity) => (
-                            <TableRow key={activity.id} className="group border-b border-white/5 hover:bg-white/[0.02] transition-all">
-                              <TableCell className="px-10 py-10 align-top">
-                                <div className="flex flex-col">
-                                  <span className="text-2xl font-black font-mono text-white group-hover:text-yellow-400 transition-colors tracking-tight">
-                                    {activity.tiempo}
-                                    {activity.fin_de_hora && <span className="text-xs text-gray-600 block mt-1">hasta {activity.fin_de_hora}</span>}
-                                  </span>
-                                  <span className="text-[9px] font-black text-gray-600 uppercase tracking-widest mt-1">Horario</span>
-                                </div>
-                              </TableCell>
-                              <TableCell className="py-10 align-top max-w-[400px]">
+
+                              {/* Sección 2: Actividad Principal */}
+                              <div className="flex-1 space-y-4 w-full">
                                 <div className="space-y-4">
-                                  <h4 className="text-xl font-black leading-tight text-white group-hover:underline underline-offset-4 decoration-yellow-400/50">{activity.descripcion}</h4>
+                                  <h4 className="text-2xl md:text-3xl font-black leading-[1.2] text-white group-hover:text-yellow-400/90 transition-all mb-4">
+                                    {activity.descripcion}
+                                  </h4>
                                   <div className="flex flex-wrap gap-2">
-                                    <div className="flex items-center gap-2 px-3 py-1 bg-white/5 border border-white/10 rounded-full">
-                                      <User className="w-3 h-3 text-gray-500" />
-                                      <span className="text-[10px] font-black text-gray-300 uppercase tracking-widest">{activity.responsable || "Personal"}</span>
+                                    <div className="flex items-center gap-2 px-4 py-1.5 bg-white/5 border border-white/10 rounded-full">
+                                      <User className="w-3.5 h-3.5 text-gray-400" />
+                                      <span className="text-xs font-black text-gray-300 uppercase tracking-widest">{activity.responsable || "Personal General"}</span>
+                                    </div>
+                                    <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest whitespace-nowrap ${
+                                      activity.resultado?.toLowerCase().includes("confirmado") ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" :
+                                      activity.resultado?.toLowerCase().includes("programado") ? "bg-yellow-400/10 text-yellow-400 border border-yellow-400/20" :
+                                      "bg-white/5 text-gray-500 border border-white/5"
+                                    }`}>
+                                      {activity.resultado || "En Cola"}
                                     </div>
                                   </div>
                                 </div>
-                              </TableCell>
-                              <TableCell className="py-10 align-top">
-                                <div className="space-y-6">
-                                  <div className="flex items-start gap-4">
-                                    <div className="mt-1 p-2 bg-yellow-400/10 rounded-xl border border-yellow-400/20"><Users className="w-4 h-4 text-yellow-400" /></div>
-                                    <div className="flex flex-col">
-                                      <span className="text-[9px] font-black uppercase tracking-widest text-gray-600 mb-1">Impacto Laboral</span>
-                                      <div className="flex items-center gap-3">
-                                        <span className="text-xs font-black text-gray-200">{activity.equipo || "Logística"}</span>
-                                        {activity.numero_estudiantes && (
-                                          <Badge className="bg-emerald-500/10 text-emerald-500 border-none text-[9px] px-2 p-0.5 font-black">{activity.numero_estudiantes} Est.</Badge>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-start gap-4">
-                                    <div className="mt-1 p-2 bg-white/5 rounded-xl border border-white/10"><ClipboardList className="w-4 h-4 text-gray-400" /></div>
-                                    <div className="flex flex-col">
-                                      <span className="text-[9px] font-black uppercase tracking-widest text-gray-600 mb-1">Requerimientos</span>
-                                      <span className="text-xs font-medium text-gray-500 italic max-w-[250px] leading-relaxed">
-                                        {activity.requisito || "Análisis técnico pendiente"}
-                                      </span>
-                                      {activity.fichero_url && (
-                                        <a 
-                                          href={activity.fichero_url} 
-                                          target="_blank" 
-                                          rel="noreferrer"
-                                          className="mt-2 flex items-center gap-2 text-[10px] font-black text-blue-400 uppercase tracking-widest hover:text-blue-300 transition-colors"
-                                        >
-                                          <FileText className="w-3 h-3" />
-                                          Ver Adjunto
-                                        </a>
+                              </div>
+
+                              {/* Sección 3: Detalles de Logística */}
+                              <div className="grid grid-cols-1 gap-6 min-w-[200px] w-full md:w-auto">
+                                <div className="flex items-start gap-3">
+                                  <div className="p-2.5 bg-yellow-400/10 rounded-xl border border-yellow-400/20"><Users className="w-4 h-4 text-yellow-400" /></div>
+                                  <div className="flex flex-col">
+                                    <span className="text-[9px] font-black uppercase tracking-widest text-gray-600 mb-1">Impacto Laboral</span>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs font-black text-gray-200">{activity.equipo || "Logística"}</span>
+                                      {activity.numero_estudiantes && (
+                                        <Badge className="bg-emerald-500/10 text-emerald-500 border-none text-[9px] px-2 p-0.5 font-black">{activity.numero_estudiantes} Est.</Badge>
                                       )}
                                     </div>
                                   </div>
-                                  
-                                  {activity.usuario_email && (
-                                    <div className="flex items-center gap-2 mb-2 px-2 py-1 bg-yellow-400/5 rounded-lg border border-yellow-400/10 w-fit">
-                                      <User className="w-2.5 h-2.5 text-yellow-500" />
-                                      <span className="text-[8px] font-black text-yellow-500/70 uppercase">Modificado por: {activity.usuario_email}</span>
-                                    </div>
-                                  )}
-                                  {activity.historial_cambios && (
-                                    <div className="flex items-start gap-4 pt-4 border-t border-white/5 opacity-60">
-                                      <div className="mt-0.5 p-1.5 bg-white/5 rounded-lg border border-white/10">
-                                        <History className="w-3 h-3 text-gray-500" />
-                                      </div>
-                                      <div className="flex flex-col">
-                                        <span className="text-[8px] font-black uppercase tracking-widest text-gray-600 mb-1">Registro de Auditoría</span>
-                                        <div className="text-[9px] text-gray-500 font-mono whitespace-pre-line leading-tight">
-                                          {activity.historial_cambios}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )}
                                 </div>
-                              </TableCell>
-                              <TableCell className="py-10 align-top text-right px-4">
-                                <div className="flex flex-col items-end gap-2">
-                                  <div className="flex items-center gap-2 text-emerald-500 bg-emerald-500/5 px-2 py-0.5 rounded-lg border border-emerald-500/10">
+
+                                <div className="flex items-start gap-3">
+                                  <div className="p-2.5 bg-white/5 rounded-xl border border-white/10"><ClipboardList className="w-4 h-4 text-gray-400" /></div>
+                                  <div className="flex flex-col">
+                                    <span className="text-[9px] font-black uppercase tracking-widest text-gray-600 mb-1">Requerimientos</span>
+                                    <span className="text-xs font-medium text-gray-500 italic leading-snug">
+                                      {activity.requisito || "Análisis técnico pendiente"}
+                                    </span>
+                                    {activity.fichero_url && (
+                                      <a 
+                                        href={activity.fichero_url} 
+                                        target="_blank" 
+                                        rel="noreferrer"
+                                        className="mt-2 flex items-center gap-2 text-[9px] font-black text-blue-400 uppercase tracking-widest hover:text-blue-300 transition-colors"
+                                      >
+                                        <FileText className="w-3 h-3" />
+                                        Documentación Adjunta
+                                      </a>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Sección 4: Monetización y Acciones */}
+                              <div className="flex flex-row md:flex-col items-center md:items-end justify-between md:justify-center gap-6 w-full md:w-auto pt-6 md:pt-0 border-t md:border-t-0 md:border-l border-white/5 md:pl-8">
+                                <div className="flex flex-col items-end gap-1">
+                                  <div className="flex items-center gap-2 text-emerald-500 bg-emerald-500/5 px-2 py-0.5 rounded-lg">
                                     <span className="text-sm font-black">+{Number(activity.ingreso)}</span>
                                     <TrendingUp className="w-3 h-3" />
                                   </div>
-                                  <div className="flex items-center gap-2 text-rose-500 bg-rose-500/5 px-2 py-0.5 rounded-lg border border-rose-500/10">
+                                  <div className="flex items-center gap-2 text-rose-500 bg-rose-500/5 px-2 py-0.5 rounded-lg">
                                     <span className="text-sm font-black">-{Number(activity.gastos)}</span>
                                     <TrendingDown className="w-3 h-3" />
                                   </div>
-                                  <div className="h-px bg-white/5 w-16 my-1" />
-                                  <span className="text-base font-black text-white">
-                                    {(Number(activity.ingreso) || 0) - (Number(activity.gastos) || 0)} <span className="text-[9px] text-gray-600 uppercase">Bs</span>
+                                  <span className="text-lg font-black text-white mt-1">
+                                    {(Number(activity.ingreso) || 0) - (Number(activity.gastos) || 0)} <span className="text-[8px] text-gray-600">Bs</span>
                                   </span>
                                 </div>
-                              </TableCell>
-                              <TableCell className="py-10 align-top text-center">
-                                <div className="flex items-center justify-center">
-                                  <div className={`px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl transition-all ${
-                                    activity.resultado?.toLowerCase().includes("confirmado") ? "bg-emerald-500 text-black shadow-emerald-500/10 hover:bg-emerald-400" :
-                                    activity.resultado?.toLowerCase().includes("programado") ? "bg-yellow-400 text-black shadow-yellow-400/10 hover:bg-yellow-300" :
-                                    activity.resultado?.toLowerCase().includes("plan") ? "bg-white/10 text-white border border-white/10" :
-                                    "bg-white/5 text-gray-500"
-                                  }`}>
-                                    {activity.resultado || "En Cola"}
-                                  </div>
-                                </div>
-                              </TableCell>
-                              <TableCell className="py-10 align-top text-right pr-10">
-                                <div className="flex justify-end gap-3 opacity-0 group-hover:opacity-100 transition-all transform translate-x-4 group-hover:translate-x-0">
+
+                                <div className="flex gap-2">
                                   <Button 
                                     variant="outline" 
                                     size="icon" 
-                                    className="h-12 w-12 rounded-2xl bg-white/5 border-white/10 hover:border-yellow-400 hover:bg-yellow-400 hover:text-black text-gray-400 transition-colors"
+                                    className="h-12 w-12 rounded-2xl bg-white/5 border-white/10 hover:border-yellow-400 hover:bg-yellow-400 hover:text-black text-gray-400 transition-all opacity-80 md:opacity-0 group-hover:opacity-100"
                                     onClick={() => handleEdit(activity)}
                                   >
                                     <Edit2 className="w-4 h-4" />
@@ -1270,21 +1248,20 @@ export default function App() {
                                   <Button 
                                     variant="outline" 
                                     size="icon" 
-                                    className="h-12 w-12 rounded-2xl bg-white/5 border-white/10 hover:border-rose-500 hover:bg-rose-500 hover:text-white text-gray-400 transition-colors"
+                                    className="h-12 w-12 rounded-2xl bg-white/5 border-white/10 hover:border-rose-500 hover:bg-rose-500 hover:text-white text-gray-400 transition-all opacity-80 md:opacity-0 group-hover:opacity-100"
                                     onClick={() => handleDelete(activity.id)}
                                   >
                                     <Trash2 className="w-4 h-4" />
                                   </Button>
                                 </div>
-                              </TableCell>
-                            </TableRow>
-                          ))
-                        )}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </TabsContent>
-              </motion.div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </TabsContent>
+                </motion.div>
             </AnimatePresence>
           </div>
         </Tabs>

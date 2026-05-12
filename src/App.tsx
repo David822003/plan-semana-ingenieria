@@ -24,7 +24,8 @@ import {
   ChevronRight
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import * as XLSX from "xlsx";
+import * as ExcelJS from "exceljs";
+import { saveAs } from "file-saver";
 import { format } from "date-fns";
 import { Toaster, toast } from "sonner";
 import { User as SupabaseUser } from "@supabase/supabase-js";
@@ -460,7 +461,70 @@ export default function App() {
     }
   };
 
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Planificación Semana");
+
+    // 1. Título Institucional
+    worksheet.mergeCells("A1:L1");
+    const titleCell = worksheet.getCell("A1");
+    titleCell.value = "DIRECCIÓN DE CARRERA - PLANIFICACIÓN SEMANAL";
+    titleCell.font = { name: "Arial", size: 16, bold: true };
+    titleCell.alignment = { vertical: "middle", horizontal: "center" };
+
+    // 2. Definición de Columnas
+    const headers = [
+      "Día",
+      "Fecha",
+      "Inicio",
+      "Fin",
+      "Actividad",
+      "Responsable",
+      "Equipo de Trabajo",
+      "Requerimiento",
+      "Ingreso (Bs)",
+      "Egreso (Bs)",
+      "Resultado",
+      "Estado"
+    ];
+
+    const headerRow = worksheet.getRow(3);
+    headerRow.values = headers;
+
+    // Estilo de Encabezados (Navy Blue #1F4E78, White Bold, Centered)
+    headerRow.eachCell((cell) => {
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FF1F4E78" }
+      };
+      cell.font = { color: { argb: "FFFFFFFF" }, bold: true };
+      cell.alignment = { vertical: "middle", horizontal: "center" };
+      cell.border = {
+        top: { style: "thin", color: { argb: "FFD3D3D3" } },
+        left: { style: "thin", color: { argb: "FFD3D3D3" } },
+        bottom: { style: "thin", color: { argb: "FFD3D3D3" } },
+        right: { style: "thin", color: { argb: "FFD3D3D3" } }
+      };
+    });
+
+    // Configuración de Anchos
+    worksheet.columns = [
+      { width: 12 }, // Día
+      { width: 12 }, // Fecha
+      { width: 10 }, // Inicio
+      { width: 10 }, // Fin
+      { width: 40, style: { alignment: { wrapText: true } } }, // Actividad
+      { width: 25 }, // Responsable
+      { width: 25 }, // Equipo
+      { width: 30 }, // Requerimiento
+      { width: 15 }, // Ingreso
+      { width: 15 }, // Egreso
+      { width: 15 }, // Resultado
+      { width: 20 }  // Estado
+    ];
+
+    // 3. Carga de Datos
     const sortedData = [...activities].sort((a, b) => {
       const dayIdxA = WEEK_DAYS.findIndex(d => d.nombre === a.dia);
       const dayIdxB = WEEK_DAYS.findIndex(d => d.nombre === b.dia);
@@ -468,33 +532,59 @@ export default function App() {
       return a.tiempo.localeCompare(b.tiempo);
     });
 
-    const worksheetData = sortedData.map(a => ({
-      "Día": a.dia,
-      "Fecha": a.fecha,
-      "Inicio": a.tiempo,
-      "Fin": a.fin_de_hora || "-",
-      "Actividad": a.descripcion,
-      "Responsable": a.responsable,
-      "Equipo de Trabajo": a.equipo,
-      "Requerimiento": a.requisito,
-      "Ingreso (Bs)": a.ingreso,
-      "Egreso (Bs)": a.gastos,
-      "Resultado": a.resultado
-    }));
+    sortedData.forEach((activity, index) => {
+      const rowNum = index + 4;
+      const row = worksheet.getRow(rowNum);
+      
+      row.values = [
+        activity.dia,
+        activity.fecha,
+        activity.tiempo,
+        activity.fin_de_hora || "-",
+        activity.descripcion,
+        activity.responsable,
+        activity.equipo,
+        activity.requisito,
+        Number(activity.ingreso) || 0,
+        Number(activity.gastos) || 0,
+        { formula: `I${rowNum}-J${rowNum}` },
+        activity.resultado
+      ];
 
-    const worksheet = XLSX.utils.json_to_sheet(worksheetData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Planificación Semana");
+      // Formato de Contabilidad (Bs.)
+      row.getCell(9).numFmt = '"Bs." #,##0.00';
+      row.getCell(10).numFmt = '"Bs." #,##0.00';
+      row.getCell(11).numFmt = '"Bs." #,##0.00';
+
+      // Zebra Striping y Bordes
+      const isEven = rowNum % 2 === 0;
+      row.eachCell((cell) => {
+        if (isEven) {
+          cell.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FFF9F9F9" }
+          };
+        }
+        cell.border = {
+          top: { style: "thin", color: { argb: "FFD3D3D3" } },
+          left: { style: "thin", color: { argb: "FFD3D3D3" } },
+          bottom: { style: "thin", color: { argb: "FFD3D3D3" } },
+          right: { style: "thin", color: { argb: "FFD3D3D3" } }
+        };
+        cell.alignment = { vertical: "middle", ...cell.alignment };
+      });
+    });
+
+    // Congelar Encabezados (Row 3 persistente)
+    worksheet.views = [{ state: "frozen", xSplit: 0, ySplit: 3 }];
+
+    // 4. Generar y descargar
+    const buffer = await workbook.xlsx.writeBuffer();
+    const fileBlob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    saveAs(fileBlob, `Planificacion_Semana_Civil_${format(new Date(), "yyyy-MM-dd")}.xlsx`);
     
-    const range = XLSX.utils.decode_range(worksheet['!ref'] || "");
-    const wscols = [];
-    if (range.e.c >= 0) {
-      for (let C = range.s.c; C <= range.e.c; ++C) wscols.push({ wch: 20 });
-    }
-    worksheet['!cols'] = wscols;
-
-    XLSX.writeFile(workbook, `Planificacion_Semana_Civil_${format(new Date(), "yyyy-MM-dd")}.xlsx`);
-    toast.success("Excel exportado exitosamente");
+    toast.success("Excel ejecutivo exportado exitosamente");
   };
 
   const filteredActivities = useMemo(() => {

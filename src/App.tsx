@@ -27,6 +27,7 @@ import { motion, AnimatePresence } from "motion/react";
 import * as ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import { format } from "date-fns";
+import * as d3 from "d3";
 import { Toaster, toast } from "sonner";
 import { User as SupabaseUser } from "@supabase/supabase-js";
 
@@ -579,12 +580,182 @@ export default function App() {
     // Congelar Encabezados (Row 3 persistente)
     worksheet.views = [{ state: "frozen", xSplit: 0, ySplit: 3 }];
 
+    // --- GENERACIÓN DE GRÁFICOS (Vía Canvas + D3) ---
+    if (sortedData.length > 0) {
+      try {
+        const generateChartImage = (type: 'column' | 'pie') => {
+          const width = type === 'column' ? 800 : 600;
+          const height = 400;
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return null;
+
+          // Fondo blanco para el gráfico
+          ctx.fillStyle = 'white';
+          ctx.fillRect(0, 0, width, height);
+
+          if (type === 'column') {
+            // Título
+            ctx.fillStyle = '#1F4E78';
+            ctx.font = 'bold 18px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('Balance Financiero Semanal', width / 2, 30);
+
+            // Márgenes
+            const margin = { top: 60, right: 30, bottom: 60, left: 60 };
+            const chartWidth = width - margin.left - margin.right;
+            const chartHeight = height - margin.top - margin.bottom;
+
+            // Datos simplificados para gráfico (máx 15 para legibilidad)
+            const displayData = sortedData.slice(0, 15);
+            
+            const x0 = d3.scaleBand()
+              .domain(displayData.map((_, i) => i.toString()))
+              .rangeRound([margin.left, width - margin.right])
+              .paddingInner(0.2);
+
+            const x1 = d3.scaleBand()
+              .domain(['Ingreso', 'Egreso'])
+              .rangeRound([0, x0.bandwidth()])
+              .padding(0.05);
+
+            const maxY = d3.max(displayData, d => Math.max(Number(d.ingreso), Number(d.gastos))) || 100;
+            const y = d3.scaleLinear()
+              .domain([0, maxY * 1.1])
+              .nice()
+              .rangeRound([height - margin.bottom, margin.top]);
+
+            // Dibujar Ejes
+            ctx.strokeStyle = '#D3D3D3';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(margin.left, margin.top);
+            ctx.lineTo(margin.left, height - margin.bottom);
+            ctx.lineTo(width - margin.right, height - margin.bottom);
+            ctx.stroke();
+
+            // Dibujar Barras
+            displayData.forEach((d, i) => {
+              const xPos = x0(i.toString())!;
+              
+              // Ingreso (Azul)
+              ctx.fillStyle = '#1F4E78';
+              ctx.fillRect(xPos + x1('Ingreso')!, y(Number(d.ingreso)), x1.bandwidth(), (height - margin.bottom) - y(Number(d.ingreso)));
+              
+              // Egreso (Rojo suave)
+              ctx.fillStyle = '#E3342F';
+              ctx.fillRect(xPos + x1('Egreso')!, y(Number(d.gastos)), x1.bandwidth(), (height - margin.bottom) - y(Number(d.gastos)));
+
+              // Labels truncados
+              ctx.fillStyle = '#666';
+              ctx.font = '10px Arial';
+              ctx.textAlign = 'center';
+              const label = d.descripcion.length > 10 ? d.descripcion.substring(0, 8) + '...' : d.descripcion;
+              ctx.fillText(label, xPos + x0.bandwidth() / 2, height - margin.bottom + 20);
+            });
+
+            // Leyenda
+            ctx.fillStyle = '#1F4E78';
+            ctx.fillRect(width / 2 - 60, height - 20, 15, 15);
+            ctx.fillStyle = '#333';
+            ctx.textAlign = 'left';
+            ctx.fillText('Ingresos', width / 2 - 40, height - 8);
+
+            ctx.fillStyle = '#E3342F';
+            ctx.fillRect(width / 2 + 20, height - 20, 15, 15);
+            ctx.fillStyle = '#333';
+            ctx.fillText('Egresos', width / 2 + 40, height - 8);
+
+          } else {
+            // PIE CHART
+            ctx.fillStyle = '#1F4E78';
+            ctx.font = 'bold 18px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('Distribución de Egresos por Responsable', width / 2, 30);
+
+            const responsibilityData = d3.rollups(
+              sortedData,
+              v => d3.sum(v, d => Number(d.gastos)),
+              d => d.responsable || "Sin Asignar"
+            ).filter(d => d[1] > 0);
+
+            if (responsibilityData.length === 0) return null;
+
+            const radius = Math.min(width, height) / 2 - 50;
+            const centerX = width / 2;
+            const centerY = height / 2 + 20;
+
+            const pie = d3.pie<[string, number]>().value(d => d[1])(responsibilityData);
+            const arc = d3.arc<d3.PieArcDatum<[string, number]>>().innerRadius(0).outerRadius(radius);
+            const colors = d3.scaleOrdinal(d3.schemeTableau10);
+
+            pie.forEach((d, i) => {
+              ctx.beginPath();
+              // @ts-ignore
+              const path = arc(d);
+              // Para dibujar un pie en canvas es más fácil usar los ángulos de d3.pie
+              ctx.moveTo(centerX, centerY);
+              ctx.arc(centerX, centerY, radius, d.startAngle - Math.PI/2, d.endAngle - Math.PI/2);
+              ctx.closePath();
+              ctx.fillStyle = colors(i.toString());
+              ctx.fill();
+              ctx.strokeStyle = 'white';
+              ctx.lineWidth = 2;
+              ctx.stroke();
+
+              // Leyenda lateral
+              const legendX = width - 180;
+              const legendY = 80 + i * 25;
+              ctx.fillStyle = colors(i.toString());
+              ctx.fillRect(legendX, legendY, 12, 12);
+              ctx.fillStyle = '#333';
+              ctx.font = '10px Arial';
+              ctx.textAlign = 'left';
+              const label = d.data[0].length > 15 ? d.data[0].substring(0, 12) + '...' : d.data[0];
+              ctx.fillText(`${label} (${d.data[1]} Bs)`, legendX + 18, legendY + 10);
+            });
+          }
+
+          return canvas.toDataURL('image/png');
+        };
+
+        const columnChartData = generateChartImage('column');
+        const pieChartData = generateChartImage('pie');
+
+        if (columnChartData) {
+          const imageId = workbook.addImage({
+            base64: columnChartData,
+            extension: 'png',
+          });
+          worksheet.addImage(imageId, {
+            tl: { col: 12.5, row: 4 }, // M5 aprox
+            ext: { width: 600, height: 300 }
+          });
+        }
+
+        if (pieChartData) {
+          const pieImageId = workbook.addImage({
+            base64: pieChartData,
+            extension: 'png',
+          });
+          worksheet.addImage(pieImageId, {
+            tl: { col: 12.5, row: 22 }, // M23 aprox
+            ext: { width: 450, height: 300 }
+          });
+        }
+      } catch (err) {
+        console.error("Error generating charts for Excel:", err);
+      }
+    }
+
     // 4. Generar y descargar
     const buffer = await workbook.xlsx.writeBuffer();
     const fileBlob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
     saveAs(fileBlob, `Planificacion_Semana_Civil_${format(new Date(), "yyyy-MM-dd")}.xlsx`);
     
-    toast.success("Excel ejecutivo exportado exitosamente");
+    toast.success("Excel ejecutivo con gráficos exportado exitosamente");
   };
 
   const filteredActivities = useMemo(() => {

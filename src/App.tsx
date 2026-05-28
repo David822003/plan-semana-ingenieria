@@ -144,10 +144,32 @@ export default function App() {
     let mounted = true;
 
     const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (mounted) {
-        setUser(session?.user ?? null);
-        setIsAuthChecking(false);
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) {
+          console.error("Supabase getSession error:", error);
+          if (error.message?.includes("Refresh Token") || error.message?.includes("refresh_token") || error.message?.includes("not found")) {
+            console.warn("Invalid refresh token, clearing session storage...");
+            localStorage.clear();
+            await supabase.auth.signOut().catch(() => {});
+          }
+          if (mounted) {
+            setUser(null);
+            setIsAuthChecking(false);
+          }
+          return;
+        }
+        if (mounted) {
+          setUser(session?.user ?? null);
+          setIsAuthChecking(false);
+        }
+      } catch (err: any) {
+        console.error("Auth session check error caught:", err);
+        localStorage.clear();
+        if (mounted) {
+          setUser(null);
+          setIsAuthChecking(false);
+        }
       }
     };
 
